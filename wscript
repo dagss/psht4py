@@ -28,6 +28,8 @@ def configure(conf):
     conf.add_os_flags('FWRAPFLAGS')
     conf.add_os_flags('CFLAGS')
     conf.add_os_flags('LINKFLAGS')
+    conf.add_os_flags('CYTHONFLAGS')
+    conf.add_os_flags('CYTHON')
 
     conf.load('compiler_c')
     conf.load('compiler_fc')
