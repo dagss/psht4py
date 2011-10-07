@@ -74,6 +74,7 @@ cdef class PshtMmajorHealpix:
     cdef cnp.ndarray map
     cdef cnp.ndarray alm
     cdef int alm_pol_offset, map_pol_offset
+    cdef int axis
     
     def __cinit__(self, nside, lmax, map=None, alm=None, mmax=None, 
                   weights=None, map_polarization=None,
@@ -161,6 +162,46 @@ cdef class PshtMmajorHealpix:
         else:
             self.add_output = 0
 
+        if isinstance(self.alm_polarization, int):
+            self.alm_itT = cnp.PyArray_IterAllButAxis(self.alm[(slice(None),) * 
+                                            self.alm_polarization + (0,) + 
+                                            (slice(None),) * (self.alm.ndim -
+                                            self.alm_polarization - 1)], 
+                                            &self.axis)
+            self.alm_itE = cnp.PyArray_IterAllButAxis(self.alm[(slice(None),) * 
+                                            self.alm_polarization + (1,) + 
+                                            (slice(None),) * (self.alm.ndim -
+                                            self.alm_polarization - 1)], 
+                                            &self.axis)
+            self.alm_itB = cnp.PyArray_IterAllButAxis(self.alm[(slice(None),) * 
+                                            self.alm_polarization + (2,) + 
+                                            (slice(None),) * (self.alm.ndim -
+                                            self.alm_polarization - 1)], 
+                                            &self.axis)
+            self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_itT)
+        else:
+            self.alm_it = cnp.PyArray_IterAllButAxis(self.alm, &self.axis)
+            self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
+
+        if isinstance(self.map_polarization, int):
+            self.map_itT = cnp.PyArray_IterAllButAxis(self.map[(slice(None),) * 
+                                            self.map_polarization + (0,) + 
+                                            (slice(None),) * (self.map.ndim -
+                                            self.map_polarization - 1)], 
+                                            &self.axis)
+            self.map_itQ = cnp.PyArray_IterAllButAxis(self.map[(slice(None),) * 
+                                            self.map_polarization + (1,) + 
+                                            (slice(None),) * (self.map.ndim -
+                                            self.map_polarization - 1)], 
+                                            &self.axis)
+            self.map_itU = cnp.PyArray_IterAllButAxis(self.map[(slice(None),) * 
+                                            self.map_polarization + (2,) + 
+                                            (slice(None),) * (self.map.ndim -
+                                            self.map_polarization - 1)], 
+                                            &self.axis)
+        else:
+            self.map_it = cnp.PyArray_IterAllButAxis(self.map, &self.axis)
+
     def __dealloc__(self):
         if self.alm_info != NULL:
             psht_destroy_alm_info(self.alm_info)
@@ -170,113 +211,194 @@ cdef class PshtMmajorHealpix:
             pshtd_destroy_joblist(self.joblist)
 
     def alm2map(self):
-        cdef int axis = self.axis
-        if isinstance(self.alm_polarization, int):
-            in_itT = cnp.PyArray_IterAllButAxis(self.alm[(slice(None),) * 
-                                            self.alm_polarization + (0,) + 
-                                            (slice(None),) * (self.alm.ndim -
-                                            self.alm_polarization - 1)], &axis)
-            in_itE = cnp.PyArray_IterAllButAxis(self.alm[(slice(None),) * 
-                                            self.alm_polarization + (1,) + 
-                                            (slice(None),) * (self.alm.ndim -
-                                            self.alm_polarization - 1)], &axis)
-            in_itB = cnp.PyArray_IterAllButAxis(self.alm[(slice(None),) * 
-                                            self.alm_polarization + (2,) + 
-                                            (slice(None),) * (self.alm.ndim -
-                                            self.alm_polarization - 1)], &axis)
-            not_done = cnp.PyArray_ITER_NOTDONE(in_itT)
-        else:
-            in_it = cnp.PyArray_IterAllButAxis(self.alm, &axis)
-            not_done = cnp.PyArray_ITER_NOTDONE(in_it)
-
-        if isinstance(self.map_polarization, int):
-            out_itT = cnp.PyArray_IterAllButAxis(self.map[(slice(None),) * 
-                                            self.map_polarization + (0,) + 
-                                            (slice(None),) * (self.map.ndim -
-                                            self.map_polarization - 1)], &axis)
-            out_itQ = cnp.PyArray_IterAllButAxis(self.map[(slice(None),) * 
-                                            self.map_polarization + (1,) + 
-                                            (slice(None),) * (self.map.ndim -
-                                            self.map_polarization - 1)], &axis)
-            out_itU = cnp.PyArray_IterAllButAxis(self.map[(slice(None),) * 
-                                            self.map_polarization + (2,) + 
-                                            (slice(None),) * (self.map.ndim -
-                                            self.map_polarization - 1)], &axis)
-        else:
-            out_it = cnp.PyArray_IterAllButAxis(self.map, &axis)
-
-        while not_done:
+        while self.not_done:
             if self.map_polarization is None:
                 #alm_polarization must also be None in this case
                 pshtd_add_job_alm2map(self.joblist,
-                                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it),
-                                    <double*>cnp.PyArray_ITER_DATA(out_it),
+                                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it),
+                                    <double*>cnp.PyArray_ITER_DATA(self.map_it),
                                     self.add_output)
-                cnp.PyArray_ITER_NEXT(in_it)
-                cnp.PyArray_ITER_NEXT(out_it)
-                not_done = cnp.PyArray_ITER_NOTDONE(in_it)
+                cnp.PyArray_ITER_NEXT(self.alm_it)
+                cnp.PyArray_ITER_NEXT(self.map_it)
+                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
             elif (self.map_polarization in ('interleave', 'stack') and
                     self.alm_polarization in ('interleave', 'stack')):
                 pshtd_add_job_alm2map_pol(self.joblist,
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it),
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it) + self.alm_pol_offset,
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it) + 2 * self.alm_pol_offset,
-                                        <double*>cnp.PyArray_ITER_DATA(out_it),
-                                        <double*>cnp.PyArray_ITER_DATA(out_it) + self.map_pol_offset,
-                                        <double*>cnp.PyArray_ITER_DATA(out_it) + 2 * self.map_pol_offset,
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it),
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + self.alm_pol_offset,
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 2 * self.alm_pol_offset,
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_it),
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_it) + self.map_pol_offset,
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_it) + 2 * self.map_pol_offset,
                                         self.add_output)
-                cnp.PyArray_ITER_NEXT(in_it)
-                cnp.PyArray_ITER_NEXT(out_it)
-                not_done = cnp.PyArray_ITER_NOTDONE(in_it)
+                cnp.PyArray_ITER_NEXT(self.alm_it)
+                cnp.PyArray_ITER_NEXT(self.map_it)
+                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
             elif (self.map_polarization in ('interleave', 'stack') and 
                     isinstance(self.alm_polarization, int)):
                 pshtd_add_job_alm2map_pol(self.joblist,
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itT),
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itE),
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itB),
-                                        <double*>cnp.PyArray_ITER_DATA(out_it),
-                                        <double*>cnp.PyArray_ITER_DATA(out_it) + self.map_pol_offset,
-                                        <double*>cnp.PyArray_ITER_DATA(out_it) + 2 * self.map_pol_offset,
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itT),
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itE),
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itB),
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_it),
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_it) + self.map_pol_offset,
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_it) + 2 * self.map_pol_offset,
                                         self.add_output)
-                cnp.PyArray_ITER_NEXT(in_itT)
-                cnp.PyArray_ITER_NEXT(in_itB)
-                cnp.PyArray_ITER_NEXT(in_itE)
-                cnp.PyArray_ITER_NEXT(out_it)
-                not_done = cnp.PyArray_ITER_NOTDONE(in_itT)
+                cnp.PyArray_ITER_NEXT(self.alm_itT)
+                cnp.PyArray_ITER_NEXT(self.alm_itB)
+                cnp.PyArray_ITER_NEXT(self.alm_itE)
+                cnp.PyArray_ITER_NEXT(self.map_it)
+                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_itT)
             elif (isinstance(self.map_polarization, int) and 
                     self.alm_polarization in ('interleave', 'stack')):
                 pshtd_add_job_alm2map_pol(self.joblist,
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it),
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it) + self.alm_pol_offset,
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it) + 2 * self.alm_pol_offset,
-                                        <double*>cnp.PyArray_ITER_DATA(out_itT),
-                                        <double*>cnp.PyArray_ITER_DATA(out_itQ),
-                                        <double*>cnp.PyArray_ITER_DATA(out_itU),
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it),
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + self.alm_pol_offset,
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 2 * self.alm_pol_offset,
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_itT),
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_itQ),
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_itU),
                                         self.add_output)
-                cnp.PyArray_ITER_NEXT(in_it)
-                cnp.PyArray_ITER_NEXT(out_itT)
-                cnp.PyArray_ITER_NEXT(out_itQ)
-                cnp.PyArray_ITER_NEXT(out_itU)
-                not_done = cnp.PyArray_ITER_NOTDONE(in_it)
+                cnp.PyArray_ITER_NEXT(self.alm_it)
+                cnp.PyArray_ITER_NEXT(self.map_itT)
+                cnp.PyArray_ITER_NEXT(self.map_itQ)
+                cnp.PyArray_ITER_NEXT(self.map_itU)
+                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
             elif (isinstance(self.map_polarization, int) and
                     isinstance(self.alm_polarization, int)):
                 pshtd_add_job_alm2map_pol(self.joblist,
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itT),
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itE),
-                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itB),
-                                        <double*>cnp.PyArray_ITER_DATA(out_itT),
-                                        <double*>cnp.PyArray_ITER_DATA(out_itQ),
-                                        <double*>cnp.PyArray_ITER_DATA(out_itU),
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itT),
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itE),
+                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itB),
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_itT),
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_itQ),
+                                        <double*>cnp.PyArray_ITER_DATA(self.map_itU),
                                         self.add_output)
-                cnp.PyArray_ITER_NEXT(in_itT)
-                cnp.PyArray_ITER_NEXT(in_itB)
-                cnp.PyArray_ITER_NEXT(in_itE)
-                cnp.PyArray_ITER_NEXT(out_itT)
-                cnp.PyArray_ITER_NEXT(out_itQ)
-                cnp.PyArray_ITER_NEXT(out_itU)
-                not_done = cnp.PyArray_ITER_NOTDONE(in_itT)
+                cnp.PyArray_ITER_NEXT(self.alm_itT)
+                cnp.PyArray_ITER_NEXT(self.alm_itB)
+                cnp.PyArray_ITER_NEXT(self.alm_itE)
+                cnp.PyArray_ITER_NEXT(self.map_itT)
+                cnp.PyArray_ITER_NEXT(self.map_itQ)
+                cnp.PyArray_ITER_NEXT(self.map_itU)
+                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_itT)
 
         pshtd_execute_jobs(self.joblist, self.geom_info, self.alm_info)
+        return self.map
+
+#    def map2alm(self):
+#        if isinstance(self.alm_polarization, int):
+#            in_itT = cnp.PyArray_IterAllButAxis(self.alm[(slice(None),) * 
+#                                            self.alm_polarization + (0,) + 
+#                                            (slice(None),) * (self.alm.ndim -
+#                                            self.alm_polarization - 1)], 
+#                                            &self.axis)
+#            in_itE = cnp.PyArray_IterAllButAxis(self.alm[(slice(None),) * 
+#                                            self.alm_polarization + (1,) + 
+#                                            (slice(None),) * (self.alm.ndim -
+#                                            self.alm_polarization - 1)], 
+#                                            &self.axis)
+#            in_itB = cnp.PyArray_IterAllButAxis(self.alm[(slice(None),) * 
+#                                            self.alm_polarization + (2,) + 
+#                                            (slice(None),) * (self.alm.ndim -
+#                                            self.alm_polarization - 1)], 
+#                                            &self.axis)
+#            not_done = cnp.PyArray_ITER_NOTDONE(in_itT)
+#        else:
+#            in_it = cnp.PyArray_IterAllButAxis(self.alm, &self.axis)
+#            not_done = cnp.PyArray_ITER_NOTDONE(in_it)
+#
+#        if isinstance(self.map_polarization, int):
+#            out_itT = cnp.PyArray_IterAllButAxis(self.map[(slice(None),) * 
+#                                            self.map_polarization + (0,) + 
+#                                            (slice(None),) * (self.map.ndim -
+#                                            self.map_polarization - 1)], 
+#                                            &self.axis)
+#            out_itQ = cnp.PyArray_IterAllButAxis(self.map[(slice(None),) * 
+#                                            self.map_polarization + (1,) + 
+#                                            (slice(None),) * (self.map.ndim -
+#                                            self.map_polarization - 1)], 
+#                                            &self.axis)
+#            out_itU = cnp.PyArray_IterAllButAxis(self.map[(slice(None),) * 
+#                                            self.map_polarization + (2,) + 
+#                                            (slice(None),) * (self.map.ndim -
+#                                            self.map_polarization - 1)], 
+#                                            &self.axis)
+#        else:
+#            out_it = cnp.PyArray_IterAllButAxis(self.map, &self.axis)
+#
+#        while not_done:
+#            if self.map_polarization is None:
+#                #alm_polarization must also be None in this case
+#                pshtd_add_job_alm2map(self.joblist,
+#                                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it),
+#                                    <double*>cnp.PyArray_ITER_DATA(out_it),
+#                                    self.add_output)
+#                cnp.PyArray_ITER_NEXT(in_it)
+#                cnp.PyArray_ITER_NEXT(out_it)
+#                not_done = cnp.PyArray_ITER_NOTDONE(in_it)
+#            elif (self.map_polarization in ('interleave', 'stack') and
+#                    self.alm_polarization in ('interleave', 'stack')):
+#                pshtd_add_job_alm2map_pol(self.joblist,
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it),
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it) + self.alm_pol_offset,
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it) + 2 * self.alm_pol_offset,
+#                                        <double*>cnp.PyArray_ITER_DATA(out_it),
+#                                        <double*>cnp.PyArray_ITER_DATA(out_it) + self.map_pol_offset,
+#                                        <double*>cnp.PyArray_ITER_DATA(out_it) + 2 * self.map_pol_offset,
+#                                        self.add_output)
+#                cnp.PyArray_ITER_NEXT(in_it)
+#                cnp.PyArray_ITER_NEXT(out_it)
+#                not_done = cnp.PyArray_ITER_NOTDONE(in_it)
+#            elif (self.map_polarization in ('interleave', 'stack') and 
+#                    isinstance(self.alm_polarization, int)):
+#                pshtd_add_job_alm2map_pol(self.joblist,
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itT),
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itE),
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itB),
+#                                        <double*>cnp.PyArray_ITER_DATA(out_it),
+#                                        <double*>cnp.PyArray_ITER_DATA(out_it) + self.map_pol_offset,
+#                                        <double*>cnp.PyArray_ITER_DATA(out_it) + 2 * self.map_pol_offset,
+#                                        self.add_output)
+#                cnp.PyArray_ITER_NEXT(in_itT)
+#                cnp.PyArray_ITER_NEXT(in_itB)
+#                cnp.PyArray_ITER_NEXT(in_itE)
+#                cnp.PyArray_ITER_NEXT(out_it)
+#                not_done = cnp.PyArray_ITER_NOTDONE(in_itT)
+#            elif (isinstance(self.map_polarization, int) and 
+#                    self.alm_polarization in ('interleave', 'stack')):
+#                pshtd_add_job_alm2map_pol(self.joblist,
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it),
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it) + self.alm_pol_offset,
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_it) + 2 * self.alm_pol_offset,
+#                                        <double*>cnp.PyArray_ITER_DATA(out_itT),
+#                                        <double*>cnp.PyArray_ITER_DATA(out_itQ),
+#                                        <double*>cnp.PyArray_ITER_DATA(out_itU),
+#                                        self.add_output)
+#                cnp.PyArray_ITER_NEXT(in_it)
+#                cnp.PyArray_ITER_NEXT(out_itT)
+#                cnp.PyArray_ITER_NEXT(out_itQ)
+#                cnp.PyArray_ITER_NEXT(out_itU)
+#                not_done = cnp.PyArray_ITER_NOTDONE(in_it)
+#            elif (isinstance(self.map_polarization, int) and
+#                    isinstance(self.alm_polarization, int)):
+#                pshtd_add_job_alm2map_pol(self.joblist,
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itT),
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itE),
+#                                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(in_itB),
+#                                        <double*>cnp.PyArray_ITER_DATA(out_itT),
+#                                        <double*>cnp.PyArray_ITER_DATA(out_itQ),
+#                                        <double*>cnp.PyArray_ITER_DATA(out_itU),
+#                                        self.add_output)
+#                cnp.PyArray_ITER_NEXT(in_itT)
+#                cnp.PyArray_ITER_NEXT(in_itB)
+#                cnp.PyArray_ITER_NEXT(in_itE)
+#                cnp.PyArray_ITER_NEXT(out_itT)
+#                cnp.PyArray_ITER_NEXT(out_itQ)
+#                cnp.PyArray_ITER_NEXT(out_itU)
+#                not_done = cnp.PyArray_ITER_NOTDONE(in_itT)
+#
+#        pshtd_execute_jobs(self.joblist, self.geom_info, self.alm_info)
+#        return self.map
 
 #    def map2alm(self, 
 #                np.ndarray[double, ndim=2, mode='c'] map,
@@ -315,5 +437,3 @@ cdef class PshtMmajorHealpix:
 #        assert nside is None
 #        nside = int(np.sqrt(map.shape[0] // 12))
 #    return PshtMmajorHealpix(lmax, nside, nmaps).alm2map(alm, map, repeat)
-
-        
