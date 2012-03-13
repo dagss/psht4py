@@ -270,6 +270,12 @@ cdef class PshtMmajorHealpix:
 
     def alm2map(self):
         numjobs = 0
+        cdef pshtd_cmplx *almT
+        cdef pshtd_cmplx *almE
+        cdef pshtd_cmplx *almB
+        cdef double *mapI
+        cdef double *mapQ
+        cdef double *mapU
         while self.not_done:
             if self.map_polarization is None:
                 #alm_polarization must also be None in this case
@@ -287,112 +293,59 @@ cdef class PshtMmajorHealpix:
                 cnp.PyArray_ITER_NEXT(self.alm_it)
                 cnp.PyArray_ITER_NEXT(self.map_it)
                 self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
-            elif (self.map_polarization in ('interleave', 'stack') and
-                    self.alm_polarization in ('interleave', 'stack')):
+            else:
+                if (self.map_polarization in ('interleave', 'stack')):
+                    mapI = <double*>cnp.PyArray_ITER_DATA(self.map_it)
+                    mapQ = (<double*>cnp.PyArray_ITER_DATA(self.map_it) + 
+                            self.map_pol_offset)
+                    mapU = (<double*>cnp.PyArray_ITER_DATA(self.map_it) +
+                            2 * self.map_pol_offset)
+                    cnp.PyArray_ITER_NEXT(self.map_it)
+                elif (isinstance(self.map_polarization, int)):
+                    mapI = <double*>cnp.PyArray_ITER_DATA(self.map_itT)
+                    mapQ = <double*>cnp.PyArray_ITER_DATA(self.map_itQ)
+                    mapU = <double*>cnp.PyArray_ITER_DATA(self.map_itU)
+                    cnp.PyArray_ITER_NEXT(self.map_itT)
+                    cnp.PyArray_ITER_NEXT(self.map_itQ)
+                    cnp.PyArray_ITER_NEXT(self.map_itU)
+                if (self.alm_polarization in ('interleave', 'stack')):
+                    almT = <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it)
+                    almE = (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
+                            self.alm_pol_offset)
+                    almB = (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
+                            2 * self.alm_pol_offset)
+                    cnp.PyArray_ITER_NEXT(self.alm_it)
+                    self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
+                elif (isinstance(self.alm_polarization, int)):
+                    almT = <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itT)
+                    almE = <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itE)
+                    almB = <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itB)
+                    cnp.PyArray_ITER_NEXT(self.alm_itT)
+                    cnp.PyArray_ITER_NEXT(self.alm_itE)
+                    cnp.PyArray_ITER_NEXT(self.alm_itB)
+                    self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_itT)
                 numjobs += 2
                 if numjobs > 10:
                     pshtd_execute_jobs(self.joblist, 
-                                       self.geom_info, 
-                                       self.alm_info)
+                                    self.geom_info, 
+                                    self.alm_info)
                     numjobs = 2
                     pshtd_clear_joblist(self.joblist)
                 pshtd_add_job_alm2map_pol(
-                    self.joblist,
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it),
-                    (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
-                     self.alm_pol_offset),
-                    (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
-                     2 * self.alm_pol_offset),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_it),
-                    (<double*>cnp.PyArray_ITER_DATA(self.map_it) +
-                     self.map_pol_offset),
-                    (<double*>cnp.PyArray_ITER_DATA(self.map_it) + 
-                     2 * self.map_pol_offset),
+                    self.joblist, almT, almE, almB, mapI, mapQ, mapU, 
                     self.add_output)
-                cnp.PyArray_ITER_NEXT(self.alm_it)
-                cnp.PyArray_ITER_NEXT(self.map_it)
-                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
-            elif (self.map_polarization in ('interleave', 'stack') and 
-                    isinstance(self.alm_polarization, int)):
-                numjobs += 2
-                if numjobs > 10:
-                    pshtd_execute_jobs(self.joblist, 
-                                       self.geom_info, 
-                                       self.alm_info)
-                    numjobs = 2
-                    pshtd_clear_joblist(self.joblist)
-                pshtd_add_job_alm2map_pol(
-                    self.joblist,
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itT),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itE),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itB),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_it),
-                    (<double*>cnp.PyArray_ITER_DATA(self.map_it) + 
-                     self.map_pol_offset),
-                    (<double*>cnp.PyArray_ITER_DATA(self.map_it) + 
-                     2 * self.map_pol_offset),
-                    self.add_output)
-                cnp.PyArray_ITER_NEXT(self.alm_itT)
-                cnp.PyArray_ITER_NEXT(self.alm_itE)
-                cnp.PyArray_ITER_NEXT(self.alm_itB)
-                cnp.PyArray_ITER_NEXT(self.map_it)
-                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_itT)
-            elif (isinstance(self.map_polarization, int) and 
-                    self.alm_polarization in ('interleave', 'stack')):
-                numjobs += 2
-                if numjobs > 10:
-                    pshtd_execute_jobs(self.joblist, 
-                                       self.geom_info, 
-                                       self.alm_info)
-                    numjobs = 2
-                    pshtd_clear_joblist(self.joblist)
-                pshtd_add_job_alm2map_pol(
-                    self.joblist,
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it),
-                    (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
-                     self.alm_pol_offset),
-                    (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
-                     2 * self.alm_pol_offset),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itT),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itQ),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itU),
-                    self.add_output)
-                cnp.PyArray_ITER_NEXT(self.alm_it)
-                cnp.PyArray_ITER_NEXT(self.map_itT)
-                cnp.PyArray_ITER_NEXT(self.map_itQ)
-                cnp.PyArray_ITER_NEXT(self.map_itU)
-                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
-            elif (isinstance(self.map_polarization, int) and
-                    isinstance(self.alm_polarization, int)):
-                numjobs += 2
-                if numjobs > 10:
-                    pshtd_execute_jobs(self.joblist, 
-                                       self.geom_info, 
-                                       self.alm_info)
-                    numjobs = 2
-                    pshtd_clear_joblist(self.joblist)
-                pshtd_add_job_alm2map_pol(
-                    self.joblist,
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itT),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itE),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itB),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itT),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itQ),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itU),
-                    self.add_output)
-                cnp.PyArray_ITER_NEXT(self.alm_itT)
-                cnp.PyArray_ITER_NEXT(self.alm_itE)
-                cnp.PyArray_ITER_NEXT(self.alm_itB)
-                cnp.PyArray_ITER_NEXT(self.map_itT)
-                cnp.PyArray_ITER_NEXT(self.map_itQ)
-                cnp.PyArray_ITER_NEXT(self.map_itU)
-                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_itT)
 
         pshtd_execute_jobs(self.joblist, self.geom_info, self.alm_info)
         return self.map
 
     def map2alm(self):
         numjobs = 0
+        cdef pshtd_cmplx *almT
+        cdef pshtd_cmplx *almE
+        cdef pshtd_cmplx *almB
+        cdef double *mapI
+        cdef double *mapQ
+        cdef double *mapU
         while self.not_done:
             if self.map_polarization is None:
                 #alm_polarization must also be None in this case
@@ -411,106 +364,48 @@ cdef class PshtMmajorHealpix:
                 cnp.PyArray_ITER_NEXT(self.alm_it)
                 cnp.PyArray_ITER_NEXT(self.map_it)
                 self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
-            elif (self.map_polarization in ('interleave', 'stack') and
-                  self.alm_polarization in ('interleave', 'stack')):
+            else:
+                if (self.map_polarization in ('interleave', 'stack')):
+                    mapI = <double*>cnp.PyArray_ITER_DATA(self.map_it)
+                    mapQ = (<double*>cnp.PyArray_ITER_DATA(self.map_it) + 
+                            self.map_pol_offset)
+                    mapU = (<double*>cnp.PyArray_ITER_DATA(self.map_it) +
+                            2 * self.map_pol_offset)
+                    cnp.PyArray_ITER_NEXT(self.map_it)
+                elif (isinstance(self.map_polarization, int)):
+                    mapI = <double*>cnp.PyArray_ITER_DATA(self.map_itT)
+                    mapQ = <double*>cnp.PyArray_ITER_DATA(self.map_itQ)
+                    mapU = <double*>cnp.PyArray_ITER_DATA(self.map_itU)
+                    cnp.PyArray_ITER_NEXT(self.map_itT)
+                    cnp.PyArray_ITER_NEXT(self.map_itQ)
+                    cnp.PyArray_ITER_NEXT(self.map_itU)
+                if (self.alm_polarization in ('interleave', 'stack')):
+                    almT = <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it)
+                    almE = (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
+                            self.alm_pol_offset)
+                    almB = (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
+                            2 * self.alm_pol_offset)
+                    cnp.PyArray_ITER_NEXT(self.alm_it)
+                    self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
+                elif (isinstance(self.alm_polarization, int)):
+                    almT = <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itT)
+                    almE = <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itE)
+                    almB = <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itB)
+                    cnp.PyArray_ITER_NEXT(self.alm_itT)
+                    cnp.PyArray_ITER_NEXT(self.alm_itE)
+                    cnp.PyArray_ITER_NEXT(self.alm_itB)
+                    self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_itT)
                 numjobs += 2
                 if numjobs > 10:
                     pshtd_execute_jobs(self.joblist, 
-                                       self.geom_info, 
-                                       self.alm_info)
+                                    self.geom_info, 
+                                    self.alm_info)
                     numjobs = 2
                     pshtd_clear_joblist(self.joblist)
+
                 pshtd_add_job_map2alm_pol(
-                        self.joblist,
-                        <double*>cnp.PyArray_ITER_DATA(self.map_it),
-                        (<double*>cnp.PyArray_ITER_DATA(self.map_it) + 
-                         self.map_pol_offset),
-                        (<double*>cnp.PyArray_ITER_DATA(self.map_it) + 
-                         2 * self.map_pol_offset),
-                        <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it),
-                        (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
-                         self.alm_pol_offset),
-                        (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
-                         2 * self.alm_pol_offset),
-                        self.add_output)
-                cnp.PyArray_ITER_NEXT(self.alm_it)
-                cnp.PyArray_ITER_NEXT(self.map_it)
-                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
-            elif (self.map_polarization in ('interleave', 'stack') and 
-                    isinstance(self.alm_polarization, int)):
-                numjobs += 2
-                if numjobs > 10:
-                    pshtd_execute_jobs(self.joblist, 
-                                       self.geom_info, 
-                                       self.alm_info)
-                    numjobs = 2
-                    pshtd_clear_joblist(self.joblist)
-                pshtd_add_job_map2alm_pol(
-                    self.joblist,
-                    <double*>cnp.PyArray_ITER_DATA(self.map_it),
-                    (<double*>cnp.PyArray_ITER_DATA(self.map_it) + 
-                     self.map_pol_offset),
-                    (<double*>cnp.PyArray_ITER_DATA(self.map_it) + 
-                     2 * self.map_pol_offset),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itT),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itE),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itB),
+                    self.joblist, mapI, mapQ, mapU, almT, almE, almB, 
                     self.add_output)
-                cnp.PyArray_ITER_NEXT(self.alm_itT)
-                cnp.PyArray_ITER_NEXT(self.alm_itE)
-                cnp.PyArray_ITER_NEXT(self.alm_itB)
-                cnp.PyArray_ITER_NEXT(self.map_it)
-                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_itT)
-            elif (isinstance(self.map_polarization, int) and 
-                    self.alm_polarization in ('interleave', 'stack')):
-                numjobs += 2
-                if numjobs > 10:
-                    pshtd_execute_jobs(self.joblist, 
-                                       self.geom_info, 
-                                       self.alm_info)
-                    numjobs = 2
-                    pshtd_clear_joblist(self.joblist)
-                pshtd_add_job_map2alm_pol(
-                    self.joblist,
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itT),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itQ),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itU),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it),
-                    (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
-                     self.alm_pol_offset),
-                    (<pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_it) + 
-                     2 * self.alm_pol_offset),
-                    self.add_output)
-                cnp.PyArray_ITER_NEXT(self.alm_it)
-                cnp.PyArray_ITER_NEXT(self.map_itT)
-                cnp.PyArray_ITER_NEXT(self.map_itQ)
-                cnp.PyArray_ITER_NEXT(self.map_itU)
-                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_it)
-            elif (isinstance(self.map_polarization, int) and
-                    isinstance(self.alm_polarization, int)):
-                numjobs += 2
-                if numjobs > 10:
-                    pshtd_execute_jobs(self.joblist, 
-                                       self.geom_info, 
-                                       self.alm_info)
-                    numjobs = 2
-                    pshtd_clear_joblist(self.joblist)
-                pshtd_add_job_map2alm_pol(
-                    self.joblist,
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itT),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itQ),
-                    <double*>cnp.PyArray_ITER_DATA(self.map_itU),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itT),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itE),
-                    <pshtd_cmplx*>cnp.PyArray_ITER_DATA(self.alm_itB),
-                    self.add_output)
-                cnp.PyArray_ITER_NEXT(self.alm_itT)
-                cnp.PyArray_ITER_NEXT(self.alm_itE)
-                cnp.PyArray_ITER_NEXT(self.alm_itB)
-                cnp.PyArray_ITER_NEXT(self.map_itT)
-                cnp.PyArray_ITER_NEXT(self.map_itQ)
-                cnp.PyArray_ITER_NEXT(self.map_itU)
-                self.not_done = cnp.PyArray_ITER_NOTDONE(self.alm_itT)
 
         pshtd_execute_jobs(self.joblist, self.geom_info, self.alm_info)
         return self.alm
